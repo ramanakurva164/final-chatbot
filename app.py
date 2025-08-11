@@ -1,17 +1,22 @@
 import streamlit as st
 import google.generativeai as genai
+import os
 
-#  Configure Streamlit page
+# ✅ Configure Streamlit page
 st.set_page_config(page_title="Agent Ramana", page_icon="🤖", layout="wide")
 
-#  Load API key from Streamlit secrets
-api_key = st.secrets["GEMINI_API_KEY"]
+# ✅ Load API key (works for both local & Streamlit Cloud)
+api_key = os.getenv("GEMINI_API_KEY", st.secrets.get("GEMINI_API_KEY"))
+if not api_key:
+    st.error("❌ No API key found. Please set GEMINI_API_KEY in Streamlit secrets or as an environment variable.")
+    st.stop()
+
 genai.configure(api_key=api_key)
 
-#  Load Gemini model
+# ✅ Load Gemini model
 model = genai.GenerativeModel("gemini-2.0-flash-lite")
 
-#  Custom CSS for chat
+# ✅ Custom CSS for chat bubbles
 st.markdown(
     """
     <style>
@@ -50,7 +55,7 @@ st.markdown(
 
 st.title("🤖 Agent Ramana")
 
-#  Session state for messages
+# ✅ Keep chat history
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {
@@ -63,41 +68,39 @@ if "messages" not in st.session_state:
         }
     ]
 
-#  Display chat history
+# ✅ Display past messages
 for msg in st.session_state.messages:
     if msg["role"] == "user":
-        st.markdown(
-            f'<div class="user-container"><div class="chat-message user-message">{msg["content"]}</div></div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(f'<div class="user-container"><div class="chat-message user-message">{msg["content"]}</div></div>', unsafe_allow_html=True)
     else:
-        st.markdown(
-            f'<div class="ai-container"><div class="chat-message ai-message">{msg["content"]}</div></div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(f'<div class="ai-container"><div class="chat-message ai-message">{msg["content"]}</div></div>', unsafe_allow_html=True)
 
-#  Chat input
+# ✅ Chat input
 user_input = st.chat_input("Say something to Ramana...")
 
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
+
+    # Convert history for Gemini API
     chat_history = [
         {"role": "user", "parts": [m["content"]]} if m["role"] == "user"
         else {"role": "model", "parts": [m["content"]]}
         for m in st.session_state.messages
     ]
 
-    #  Typing effect (streaming)
+    # ✅ Create placeholder for streaming output
     placeholder = st.empty()
     ai_reply = ""
+
     try:
+        # Stream the response in real-time
         response = model.generate_content(chat_history, stream=True)
         for chunk in response:
             if chunk.text:
                 ai_reply += chunk.text
                 placeholder.markdown(
                     f'<div class="ai-container"><div class="chat-message ai-message">{ai_reply}</div></div>',
-                    unsafe_allow_html=True,
+                    unsafe_allow_html=True
                 )
         placeholder.empty()
     except Exception as e:
