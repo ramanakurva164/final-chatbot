@@ -1,92 +1,78 @@
 import streamlit as st
 import requests
 import os
+import time
 
-# ✅ Configure Streamlit page
+# ✅ Streamlit page settings
 st.set_page_config(page_title="Agent Ramana (Mistral API)", page_icon="🤖", layout="wide")
 
-# ✅ Get HF token
-hf_token = os.getenv("HF_TOKEN", st.secrets.get("HF_TOKEN"))
+# ✅ Get Hugging Face token from secrets or env
+hf_token = os.getenv("HF_TOKEN") or st.secrets.get("HF_TOKEN")
 if not hf_token:
-    st.error("❌ Please set your Hugging Face token as HF_TOKEN in Streamlit secrets or as an environment variable.")
+    st.error("❌ Please set your Hugging Face token in Streamlit secrets or environment variables.")
     st.stop()
 
-# ✅ API URL for Hugging Face Inference
-API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2"
-headers = {"Authorization": f"Bearer {hf_token}"}
+# ✅ API details
+API_URL = "https://router.huggingface.co/v1/chat/completions"
+HEADERS = {"Authorization": f"Bearer {hf_token}"}
+MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.2:featherless-ai"
 
-def query_mistral(prompt):
-    payload = {
-        "inputs": prompt,
-        "parameters": {"max_new_tokens": 256, "temperature": 0.75, "top_p": 0.95}
-    }
-    response = requests.post(API_URL, headers=headers, json=payload)
-    if response.status_code != 200:
-        return f"❌ Error: {response.status_code} - {response.text}"
-    data = response.json()
-    if isinstance(data, dict) and "error" in data:
-        return f"❌ API Error: {data['error']}"
-    return data[0]["generated_text"]
-
-# ✅ Custom CSS
-st.markdown(
-    """
-    <style>
-    .chat-message { max-width: 75%; padding: 12px 16px; margin: 10px 0;
-                    border-radius: 12px; font-size: 16px; line-height: 1.5;
-                    display: inline-block; word-break: break-word; }
-    .user-container { display: flex; justify-content: flex-end; }
-    .user-message { background-color: #2563eb; color: white; text-align: right; }
-    .ai-container { display: flex; justify-content: flex-start; }
-    .ai-message { background-color: #f3f4f6; color: #111827; text-align: left; }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-st.title("🤖 Agent Ramana (Mistral API)")
-
-# ✅ Session state for chat
+# ✅ Chat history in session state
 if "messages" not in st.session_state:
-    st.session_state.messages = [{
-        "role": "ai",
-        "content": (
-            "Hey, I'm Ramana (Mistral powered via API) — your friendly personal companion 🤗. "
-            "You can share anything with me — your thoughts, dreams, problems, or just chat casually. "
-            "I'm always here to listen and talk like a friend 💬"
-        )
-    }]
+    st.session_state.messages = [
+        {"role": "assistant", "content": "Hey, I'm Ramana (Mistral powered via API). How can I help you today? 😊"}
+    ]
 
-# ✅ Display past messages
+# ✅ Display chat history
 for msg in st.session_state.messages:
-    if msg["role"] == "user":
-        st.markdown(f'<div class="user-container"><div class="chat-message user-message">{msg["content"]}</div></div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<div class="ai-container"><div class="chat-message ai-message">{msg["content"]}</div></div>', unsafe_allow_html=True)
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
 # ✅ Chat input
-user_input = st.chat_input("Say something to Ramana...")
-
-if user_input:
-    # Append & show user message
+if user_input := st.chat_input("Say something to Ramana..."):
+    # Append user message
     st.session_state.messages.append({"role": "user", "content": user_input})
-    st.markdown(f'<div class="user-container"><div class="chat-message user-message">{user_input}</div></div>', unsafe_allow_html=True)
+    with st.chat_message("user"):
+        st.markdown(user_input)
 
-    # Prepare prompt with history
-    history_text = ""
-    for message in st.session_state.messages:
-        if message["role"] == "user":
-            history_text += f"User: {message['content']}\n"
-        else:
-            history_text += f"Assistant: {message['content']}\n"
-    history_text += "Assistant:"
+    # Prepare payload with full history
+    payload = {
+        "model": MODEL_ID,
+        "messages": [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
+        "max_tokens": 256,
+        "temperature": 0.7,
+        "top_p": 0.95
+    }
 
-    # Call HF API
-    ai_reply = query_mistral(history_text).replace(history_text, "").strip()
+    # Typing effect placeholder
+    with st.chat_message("assistant"):
+        placeholder = st.empty()
+        full_reply = ""
 
-    # Append & show AI reply
-    st.session_state.messages.append({"role": "ai", "content": ai_reply})
-    st.markdown(f'<div class="ai-container"><div class="chat-message ai-message">{ai_reply}</div></div>', unsafe_allow_html=True)
+        # Send request
+        try:
+            response = requests.post(API_URL, headers=HEADERS, json=payload, stream=True)
+            response.raise_for_status()
+
+            # Handle streaming chunks
+            for chunk in response.iter_lines():
+                if chunk:
+                    try:
+                        data = chunk.decode("utf-8")
+                        if '"delta":{"content":"' in data:
+                            text_piece = data.split('"delta":{"content":"')[-1].split('"')[0]
+                            full_reply += text_piece
+                            placeholder.markdown(full_reply + "▌")
+                            time.sleep(0.02)
+                    except:
+                        pass
+
+            placeholder.markdown(full_reply)
+            st.session_state.messages.append({"role": "assistant", "content": full_reply})
+
+        except requests.exceptions.RequestException as e:
+            st.error(f"API Error: {e}")
+
 
 
 
