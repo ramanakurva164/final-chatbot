@@ -20,7 +20,7 @@ def load_mistral():
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
         torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-        device_map="auto",
+        device_map="none",
         token=hf_token
     )
     return model, tokenizer
