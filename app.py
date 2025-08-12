@@ -6,13 +6,12 @@ import time
 # ✅ Streamlit page settings
 st.set_page_config(page_title="Agent Ramana (Mistral API)", page_icon="🤖", layout="wide")
 
-# ✅ Get Hugging Face token from secrets or env
+# ✅ Hugging Face token
 hf_token = os.getenv("HF_TOKEN") or st.secrets.get("HF_TOKEN")
 if not hf_token:
     st.error("❌ Please set your Hugging Face token in Streamlit secrets or environment variables.")
     st.stop()
 
-# ✅ API details
 API_URL = "https://router.huggingface.co/v1/chat/completions"
 HEADERS = {"Authorization": f"Bearer {hf_token}"}
 MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.2:featherless-ai"
@@ -35,7 +34,7 @@ if user_input := st.chat_input("Say something to Ramana..."):
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    # Prepare payload with full history
+    # Prepare payload
     payload = {
         "model": MODEL_ID,
         "messages": [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
@@ -44,35 +43,30 @@ if user_input := st.chat_input("Say something to Ramana..."):
         "top_p": 0.95
     }
 
-    # Typing effect placeholder
     with st.chat_message("assistant"):
         placeholder = st.empty()
         full_reply = ""
 
-        # Send request
         try:
-            response = requests.post(API_URL, headers=HEADERS, json=payload, stream=True)
+            # ✅ No streaming — single full reply
+            response = requests.post(API_URL, headers=HEADERS, json=payload)
             response.raise_for_status()
+            data = response.json()
 
-            # Handle streaming chunks
-            for chunk in response.iter_lines():
-                if chunk:
-                    try:
-                        data = chunk.decode("utf-8")
-                        if '"delta":{"content":"' in data:
-                            text_piece = data.split('"delta":{"content":"')[-1].split('"')[0]
-                            full_reply += text_piece
-                            placeholder.markdown(full_reply + "▌")
-                            time.sleep(0.02)
-                    except:
-                        pass
+            full_reply = data["choices"][0]["message"]["content"]
 
-            placeholder.markdown(full_reply)
+            # Typing effect
+            typed_text = ""
+            for char in full_reply:
+                typed_text += char
+                placeholder.markdown(typed_text + "▌")
+                time.sleep(0.015)
+            placeholder.markdown(typed_text)
+
             st.session_state.messages.append({"role": "assistant", "content": full_reply})
 
         except requests.exceptions.RequestException as e:
             st.error(f"API Error: {e}")
-
 
 
 
