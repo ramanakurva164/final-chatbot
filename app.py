@@ -1,17 +1,27 @@
 import streamlit as st
-from transformers import AutoModelForCausalLM, AutoTokenizer, TextStreamer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
+import os
 
 # ✅ Configure Streamlit page
 st.set_page_config(page_title="Agent Ramana (Mistral)", page_icon="🤖", layout="wide")
+
+# ✅ Get HF token from environment or Streamlit secrets
+hf_token = os.getenv("HF_TOKEN", st.secrets.get("HF_TOKEN"))
+if not hf_token:
+    st.error("❌ Please set your Hugging Face token as HF_TOKEN in Streamlit secrets or as an environment variable.")
+    st.stop()
 
 # ✅ Load Mistral model and tokenizer (from Hugging Face)
 @st.cache_resource(show_spinner="Loading Mistral model... (this may take a while)")
 def load_mistral():
     model_id = "mistralai/Mistral-7B-Instruct-v0.2"
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    tokenizer = AutoTokenizer.from_pretrained(model_id, token=hf_token)
     model = AutoModelForCausalLM.from_pretrained(
-        model_id, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32, device_map="auto"
+        model_id,
+        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+        device_map="auto",
+        token=hf_token
     )
     return model, tokenizer
 
