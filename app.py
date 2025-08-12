@@ -3,10 +3,14 @@ import requests
 import os
 import time
 
-# ✅ Streamlit page settings
-st.set_page_config(page_title="Agent Ramana (Mistral API)", page_icon="🤖", layout="wide")
+# ------------------- PAGE SETTINGS -------------------
+st.set_page_config(
+    page_title="Agent Ramana (Mistral AI)",
+    page_icon="🤖",
+    layout="centered"
+)
 
-# ✅ Hugging Face token
+# ------------------- API CONFIG -------------------
 hf_token = os.getenv("HF_TOKEN") or st.secrets.get("HF_TOKEN")
 if not hf_token:
     st.error("❌ Please set your Hugging Face token in Streamlit secrets or environment variables.")
@@ -16,25 +20,52 @@ API_URL = "https://router.huggingface.co/v1/chat/completions"
 HEADERS = {"Authorization": f"Bearer {hf_token}"}
 MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.2:featherless-ai"
 
-# ✅ Chat history in session state
+# ------------------- CUSTOM CSS -------------------
+st.markdown("""
+<style>
+.chat-container {
+    max-width: 800px;
+    margin: auto;
+}
+.user-bubble {
+    background-color: #DCF8C6;
+    color: black;
+    padding: 10px 15px;
+    border-radius: 12px;
+    margin: 5px;
+    display: inline-block;
+}
+.assistant-bubble {
+    background-color: #E4E6EB;
+    color: black;
+    padding: 10px 15px;
+    border-radius: 12px;
+    margin: 5px;
+    display: inline-block;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ------------------- CHAT HISTORY -------------------
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Hey, I'm Ramana (Mistral powered via API). How can I help you today? 😊"}
+        {"role": "assistant", "content": "Hey 👋, I'm **Ramana** (Mistral powered). How can I help you today? 😊"}
     ]
 
-# ✅ Display chat history
+# ------------------- DISPLAY CHAT -------------------
+st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+    if msg["role"] == "user":
+        st.markdown(f"<div class='user-bubble'>{msg['content']}</div>", unsafe_allow_html=True)
+    else:
+        st.markdown(f"<div class='assistant-bubble'>{msg['content']}</div>", unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
-# ✅ Chat input
-if user_input := st.chat_input("Say something to Ramana..."):
-    # Append user message
+# ------------------- CHAT INPUT -------------------
+if user_input := st.chat_input("Type your message here..."):
     st.session_state.messages.append({"role": "user", "content": user_input})
-    with st.chat_message("user"):
-        st.markdown(user_input)
 
-    # Prepare payload
+    # Prepare API request
     payload = {
         "model": MODEL_ID,
         "messages": [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
@@ -43,25 +74,23 @@ if user_input := st.chat_input("Say something to Ramana..."):
         "top_p": 0.95
     }
 
+    # Display typing effect for assistant
     with st.chat_message("assistant"):
         placeholder = st.empty()
         full_reply = ""
 
         try:
-            # ✅ No streaming — single full reply
             response = requests.post(API_URL, headers=HEADERS, json=payload)
             response.raise_for_status()
             data = response.json()
-
             full_reply = data["choices"][0]["message"]["content"]
 
-            # Typing effect
             typed_text = ""
             for char in full_reply:
                 typed_text += char
-                placeholder.markdown(typed_text + "▌")
+                placeholder.markdown(f"<div class='assistant-bubble'>{typed_text}▌</div>", unsafe_allow_html=True)
                 time.sleep(0.015)
-            placeholder.markdown(typed_text)
+            placeholder.markdown(f"<div class='assistant-bubble'>{typed_text}</div>", unsafe_allow_html=True)
 
             st.session_state.messages.append({"role": "assistant", "content": full_reply})
 
