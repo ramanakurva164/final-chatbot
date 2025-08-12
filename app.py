@@ -1,145 +1,72 @@
 import streamlit as st
 import requests
 import os
+import time
 
-# ✅ Set your Mistral API Key (You can also store in Streamlit Secrets)
-MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "your_api_key_here")
+# ✅ Streamlit page settings
+st.set_page_config(page_title="Agent Ramana (Mistral API)", page_icon="🤖", layout="wide")
 
-# ✅ API endpoint
-MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions"
+# ✅ Hugging Face token
+hf_token = os.getenv("HF_TOKEN") or st.secrets.get("HF_TOKEN")
+if not hf_token:
+    st.error("❌ Please set your Hugging Face token in Streamlit secrets or environment variables.")
+    st.stop()
 
-# ✅ Streamlit UI
-st.set_page_config(page_title="Mistral Chatbot", page_icon="🤖", layout="centered")
-st.title("🤖 Mistral AI Chatbot")
+API_URL = "https://router.huggingface.co/v1/chat/completions"
+HEADERS = {"Authorization": f"Bearer {hf_token}"}
+MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.2:featherless-ai"
 
+# ✅ Chat history in session state
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = [
+        {"role": "assistant", "content": "Hey, I'm Ramana (Mistral powered via API). How can I help you today? 😊"}
+    ]
 
-# Display chat history
+# ✅ Display chat history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# User input
-if prompt := st.chat_input("Ask something..."):
-    # Store user message
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# ✅ Chat input
+if user_input := st.chat_input("Say something to Ramana..."):
+    # Append user message
+    st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
-        st.markdown(prompt)
+        st.markdown(user_input)
 
-    # Create empty container for AI streaming response
+    # Prepare payload
+    payload = {
+        "model": MODEL_ID,
+        "messages": [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
+        "max_tokens": 256,
+        "temperature": 0.7,
+        "top_p": 0.95
+    }
+
     with st.chat_message("assistant"):
-        response_placeholder = st.empty()
-        full_response = ""
+        placeholder = st.empty()
+        full_reply = ""
 
         try:
-            # API request with streaming enabled
-            response = requests.post(
-                MISTRAL_API_URL,
-                headers={
-                    "Authorization": f"Bearer {MISTRAL_API_KEY}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": "mistral-small-latest",  # You can change to mistral-medium-latest
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.7,
-                    "stream": True
-                },
-                stream=True  # Enable streaming
-            )
+            # ✅ No streaming — single full reply
+            response = requests.post(API_URL, headers=HEADERS, json=payload)
+            response.raise_for_status()
+            data = response.json()
 
-            # ✅ Read and display chunks as they arrive
-            for line in response.iter_lines():
-                if line:
-                    try:
-                        chunk = line.decode("utf-8")
-                        if '"content"' in chunk:
-                            text_piece = chunk.split('"content":"')[-1].split('"')[0]
-                            full_response += text_piece
-                            response_placeholder.markdown(full_response)
-                    except:
-                        pass
+            full_reply = data["choices"][0]["message"]["content"]
 
-        except Exception as e:
-            full_response = f"⚠️ Error: {e}"
-            response_placeholder.markdown(full_response)
+            # Typing effect
+            typed_text = ""
+            for char in full_reply:
+                typed_text += char
+                placeholder.markdown(typed_text + "▌")
+                time.sleep(0.015)
+            placeholder.markdown(typed_text)
 
-        # Save assistant response
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
+            st.session_state.messages.append({"role": "assistant", "content": full_reply})
 
-
-
-
-# import streamlit as st
-# import requests
-# import os
-# import time
-
-# # ✅ Streamlit page settings
-# st.set_page_config(page_title="Agent Ramana (Mistral API)", page_icon="🤖", layout="wide")
-
-# # ✅ Hugging Face token
-# hf_token = os.getenv("HF_TOKEN") or st.secrets.get("HF_TOKEN")
-# if not hf_token:
-#     st.error("❌ Please set your Hugging Face token in Streamlit secrets or environment variables.")
-#     st.stop()
-
-# API_URL = "https://router.huggingface.co/v1/chat/completions"
-# HEADERS = {"Authorization": f"Bearer {hf_token}"}
-# MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.2:featherless-ai"
-
-# # ✅ Chat history in session state
-# if "messages" not in st.session_state:
-#     st.session_state.messages = [
-#         {"role": "assistant", "content": "Hey, I'm Ramana (Mistral powered via API). How can I help you today? 😊"}
-#     ]
-
-# # ✅ Display chat history
-# for msg in st.session_state.messages:
-#     with st.chat_message(msg["role"]):
-#         st.markdown(msg["content"])
-
-# # ✅ Chat input
-# if user_input := st.chat_input("Say something to Ramana..."):
-#     # Append user message
-#     st.session_state.messages.append({"role": "user", "content": user_input})
-#     with st.chat_message("user"):
-#         st.markdown(user_input)
-
-#     # Prepare payload
-#     payload = {
-#         "model": MODEL_ID,
-#         "messages": [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
-#         "max_tokens": 256,
-#         "temperature": 0.7,
-#         "top_p": 0.95
-#     }
-
-#     with st.chat_message("assistant"):
-#         placeholder = st.empty()
-#         full_reply = ""
-
-#         try:
-#             # ✅ No streaming — single full reply
-#             response = requests.post(API_URL, headers=HEADERS, json=payload)
-#             response.raise_for_status()
-#             data = response.json()
-
-#             full_reply = data["choices"][0]["message"]["content"]
-
-#             # Typing effect
-#             typed_text = ""
-#             for char in full_reply:
-#                 typed_text += char
-#                 placeholder.markdown(typed_text + "▌")
-#                 time.sleep(0.015)
-#             placeholder.markdown(typed_text)
-
-#             st.session_state.messages.append({"role": "assistant", "content": full_reply})
-
-#         except requests.exceptions.RequestException as e:
-#             st.error(f"API Error: {e}")
+        except requests.exceptions.RequestException as e:
+            st.error(f"API Error: {e}")
 
 
 
