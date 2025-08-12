@@ -1,85 +1,63 @@
 import streamlit as st
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
+import requests
 import os
 
 # ✅ Configure Streamlit page
-st.set_page_config(page_title="Agent Ramana (Mistral)", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="Agent Ramana (Mistral API)", page_icon="🤖", layout="wide")
 
-# ✅ Get HF token from environment or Streamlit secrets
+# ✅ Get HF token
 hf_token = os.getenv("HF_TOKEN", st.secrets.get("HF_TOKEN"))
 if not hf_token:
     st.error("❌ Please set your Hugging Face token as HF_TOKEN in Streamlit secrets or as an environment variable.")
     st.stop()
 
-# ✅ Load Mistral model and tokenizer (from Hugging Face)
-@st.cache_resource(show_spinner="Loading Mistral model... (this may take a while)")
-def load_mistral():
-    model_id = "mistralai/Mistral-7B-Instruct-v0.2"
-    tokenizer = AutoTokenizer.from_pretrained(model_id, token=hf_token)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-        device_map="auto",
-        token=hf_token
-    )
-    return model, tokenizer
+# ✅ API URL for Hugging Face Inference
+API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2"
+headers = {"Authorization": f"Bearer {hf_token}"}
 
-model, tokenizer = load_mistral()
+def query_mistral(prompt):
+    payload = {
+        "inputs": prompt,
+        "parameters": {"max_new_tokens": 256, "temperature": 0.75, "top_p": 0.95}
+    }
+    response = requests.post(API_URL, headers=headers, json=payload)
+    if response.status_code != 200:
+        return f"❌ Error: {response.status_code} - {response.text}"
+    data = response.json()
+    if isinstance(data, dict) and "error" in data:
+        return f"❌ API Error: {data['error']}"
+    return data[0]["generated_text"]
 
 # ✅ Custom CSS
 st.markdown(
     """
     <style>
-    .chat-message {
-        max-width: 75%;
-        padding: 12px 16px;
-        margin: 10px 0;
-        border-radius: 12px;
-        font-size: 16px;
-        line-height: 1.5;
-        display: inline-block;
-        word-break: break-word;
-    }
-    .user-container {
-        display: flex;
-        justify-content: flex-end;
-    }
-    .user-message {
-        background-color: #2563eb;
-        color: white;
-        text-align: right;
-    }
-    .ai-container {
-        display: flex;
-        justify-content: flex-start;
-    }
-    .ai-message {
-        background-color: #f3f4f6;
-        color: #111827;
-        text-align: left;
-    }
+    .chat-message { max-width: 75%; padding: 12px 16px; margin: 10px 0;
+                    border-radius: 12px; font-size: 16px; line-height: 1.5;
+                    display: inline-block; word-break: break-word; }
+    .user-container { display: flex; justify-content: flex-end; }
+    .user-message { background-color: #2563eb; color: white; text-align: right; }
+    .ai-container { display: flex; justify-content: flex-start; }
+    .ai-message { background-color: #f3f4f6; color: #111827; text-align: left; }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-st.title("🤖 Agent Ramana (Mistral)")
+st.title("🤖 Agent Ramana (Mistral API)")
 
 # ✅ Session state for chat
 if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {
-            "role": "ai",
-            "content": (
-                "Hey, I'm Ramana (Mistral powered) — your friendly personal companion 🤗. "
-                "You can share anything with me — your thoughts, dreams, problems, or just chat casually. "
-                "I'm always here to listen and talk like a friend 💬"
-            )
-        }
-    ]
+    st.session_state.messages = [{
+        "role": "ai",
+        "content": (
+            "Hey, I'm Ramana (Mistral powered via API) — your friendly personal companion 🤗. "
+            "You can share anything with me — your thoughts, dreams, problems, or just chat casually. "
+            "I'm always here to listen and talk like a friend 💬"
+        )
+    }]
 
-# ✅ Display all past messages
+# ✅ Display past messages
 for msg in st.session_state.messages:
     if msg["role"] == "user":
         st.markdown(f'<div class="user-container"><div class="chat-message user-message">{msg["content"]}</div></div>', unsafe_allow_html=True)
@@ -90,50 +68,28 @@ for msg in st.session_state.messages:
 user_input = st.chat_input("Say something to Ramana...")
 
 if user_input:
-    # Step 1: Append & display user message immediately
+    # Append & show user message
     st.session_state.messages.append({"role": "user", "content": user_input})
     st.markdown(f'<div class="user-container"><div class="chat-message user-message">{user_input}</div></div>', unsafe_allow_html=True)
 
-    # Step 2: Prepare prompt for Mistral (chat style)
-    history = st.session_state.messages
-    prompt = ""
-    for message in history:
+    # Prepare prompt with history
+    history_text = ""
+    for message in st.session_state.messages:
         if message["role"] == "user":
-            prompt += f"User: {message['content']}\n"
+            history_text += f"User: {message['content']}\n"
         else:
-            prompt += f"Assistant: {message['content']}\n"
-    prompt += "Assistant:"
+            history_text += f"Assistant: {message['content']}\n"
+    history_text += "Assistant:"
 
-    # Step 3: Generate response with Mistral
-    input_ids = tokenizer(prompt, return_tensors="pt").input_ids
-    if torch.cuda.is_available():
-        input_ids = input_ids.cuda()
-        model.cuda()
+    # Call HF API
+    ai_reply = query_mistral(history_text).replace(history_text, "").strip()
 
-    with torch.no_grad():
-        output_ids = model.generate(
-            input_ids,
-            max_new_tokens=256,
-            do_sample=True,
-            temperature=0.75,
-            top_p=0.95,
-            eos_token_id=tokenizer.eos_token_id,
-            pad_token_id=tokenizer.eos_token_id,
-        )
-    output_text = tokenizer.decode(output_ids[0][input_ids.shape[-1]:], skip_special_tokens=True)
-    ai_reply = output_text.strip()
-
-    # Step 4: Display AI reply
-    st.markdown(
-        f'<div class="ai-container"><div class="chat-message ai-message">{ai_reply}</div></div>',
-        unsafe_allow_html=True
-    )
-
-    # Step 5: Append AI reply to history
+    # Append & show AI reply
     st.session_state.messages.append({"role": "ai", "content": ai_reply})
+    st.markdown(f'<div class="ai-container"><div class="chat-message ai-message">{ai_reply}</div></div>', unsafe_allow_html=True)
 
-    # Step 6: Force UI update
-    st.rerun()
+
+
 # import streamlit as st
 # import google.generativeai as genai
 # import os
