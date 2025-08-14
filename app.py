@@ -2,7 +2,11 @@ import streamlit as st
 import requests
 import os
 import time
+from dotenv import load_dotenv
 
+
+# Load .env file
+load_dotenv()
 # ✅ Streamlit page settings
 st.set_page_config(page_title="Agent Ramana (Mistral API)", page_icon="🤖", layout="wide")
 
